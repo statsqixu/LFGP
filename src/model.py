@@ -324,6 +324,10 @@ class fuse_MF(torch.nn.Module):
         
         return torch.stack(outputs).mean()
 
+    def epoch_end(self, epoch, result):
+    
+        print("Epoch: {} - Training loss: {:.4f}".format(epoch, result))
+
     def fit(self, epochs, learning_rate, train_loader, print_history, opt_func,
                 weight_decay, device):
 
