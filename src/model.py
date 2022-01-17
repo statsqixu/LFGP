@@ -116,8 +116,17 @@ class MCGP_MF(torch.nn.Module):
         self.lambda1 = lambda1
         self.lambda2 = lambda2
 
-        self.P = torch.randint(high=n_task_group, size=(n_tasks, ))     # task group membership
-        self.Q = torch.randint(high=n_worker_group, size=(n_workers, )) # worker group membership
+        if self.lambda1 > 0:
+            self.P = torch.randint(high=n_task_group, size=(n_tasks, ))     # task group membership
+        else:
+            self.P = torch.ones((n_tasks, ))
+            self.n_task_group = 1
+
+        if self.lambda2 > 0:
+            self.Q = torch.randint(high=n_worker_group, size=(n_workers, )) # worker group membership
+        else:
+            self.Q = torch.ones((n_workers, ))
+            self.n_worker_group = 1
 
     def forward(self, task, worker):
 
@@ -137,23 +146,31 @@ class MCGP_MF(torch.nn.Module):
 
         penalty1 = 0
 
-        for i in range(self.n_task_group):
+        if self.lambda1 > 0:
 
-            task_centroid[i, ] = torch.mean(task_factors[P == i, ], dim=0)
+            for i in range(self.n_task_group):
 
-            penalty1 += torch.sum(torch.square(task_factors[P == i, ] - task_centroid[i, ]))
+                task_centroid[i, ] = torch.mean(task_factors[P == i, ], dim=0)
+
+                penalty1 += torch.sum(torch.square(task_factors[P == i, ] - task_centroid[i, ]))
+
+            penalty1 = self.lambda1 * penalty1
 
         worker_centroid = torch.zeros(self.n_worker_group, self.n_factors)
 
         penalty2 = 0
+        
+        if self.lambda2 > 0:
 
-        for i in range(self.n_worker_group):
+            for i in range(self.n_worker_group):
 
-            worker_centroid[i, ] = torch.mean(worker_factors[Q == i, ], dim=0)
+                worker_centroid[i, ] = torch.mean(worker_factors[Q == i, ], dim=0)
 
-            penalty2 += torch.sum(torch.square(worker_factors[Q == i, ] - worker_centroid[i, ]))
+                penalty2 += torch.sum(torch.square(worker_factors[Q == i, ] - worker_centroid[i, ]))
 
-        penalty = self.lambda1 * penalty1 + self.lambda2 * penalty2
+            penalty2 = self.lambda2 * penalty2
+
+        penalty = penalty1 + penalty2
 
         return penalty
 
@@ -222,8 +239,10 @@ class MCGP_MF(torch.nn.Module):
                 worker_optimizer.zero_grad()
                 worker_scheduler.step()
 
-            self.P = task_kmeans.fit_predict(self.task_factors.weight)
-            self.Q = worker_kmeans.fit_predict(self.worker_factors.weight)
+            if self.lambda1 > 0:
+                self.P = task_kmeans.fit_predict(self.task_factors.weight)
+            if self.lambda2 > 0:
+                self.Q = worker_kmeans.fit_predict(self.worker_factors.weight)
             
             result = self._evaluate(train_loader, device)
             if print_history:
